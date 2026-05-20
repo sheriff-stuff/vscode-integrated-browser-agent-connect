@@ -11,12 +11,12 @@
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/thimo/integrated-browser-mcp.git"
+    "url": "https://github.com/thimo/vscode-integrated-browser-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/thimo/integrated-browser-mcp/issues"
+    "url": "https://github.com/thimo/vscode-integrated-browser-mcp/issues"
   },
-  "homepage": "https://github.com/thimo/integrated-browser-mcp#readme",
+  "homepage": "https://github.com/thimo/vscode-integrated-browser-mcp#readme",
   "keywords": [
     "mcp",
     "browser",
