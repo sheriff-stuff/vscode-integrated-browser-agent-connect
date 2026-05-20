@@ -5,6 +5,11 @@ All notable changes to the Integrated Browser MCP extension are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] — 2026-05-20
+
+### Changed
+- Icon viewBox tightened to remove the ~10% transparent margin around the rounded square. The Marketplace doesn't mask icons into a safe-area, so the padding just made the artwork render smaller than its neighbors in the listing grid.
+
 ## [0.5.2] — 2026-05-20
 
 ### Changed
