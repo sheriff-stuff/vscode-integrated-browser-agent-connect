@@ -1,11 +1,8 @@
 import * as http from 'http';
-import * as fs from 'fs';
 import express from 'express';
 import type { CDPManager } from './cdp';
-import type { CDPTab, DownloadBehavior } from './cdp-tab';
+import type { CDPTab } from './cdp-tab';
 import type * as vscode from 'vscode';
-
-const DOWNLOAD_BEHAVIORS: ReadonlySet<DownloadBehavior> = new Set(['allow', 'allowAndName', 'deny', 'default']);
 
 export class BridgeServer {
 	private app: express.Application;
@@ -301,6 +298,18 @@ export class BridgeServer {
 		// with whichever side gets fixed first. `/status` exposes which
 		// path won most recently for debugging. `Emulation.clearDevice-
 		// MetricsOverride` clears either override, so reset is one call.
+		//
+		// GOTCHA (verified working — don't "fix" it): width/height DO apply on
+		// the `browserTab`/proposed-API (multi-tab) transport — `{width:1280,
+		// height:800}` gives `innerWidth:1280`, `path:"emulation"`. What looks
+		// like a bug is `mobile:true` on a NON-responsive page (no
+		// `<meta name=viewport>`): Chromium then renders at the 980px mobile
+		// default layout width and scales down — exactly like a real mobile
+		// browser, NOT a dropped override. So `innerWidth:980` after
+		// `{width:390, mobile:true}` on a bare page is correct. Test the width
+		// override without `mobile`, or on a page that has a viewport meta tag.
+		// (See TODO.md — this misread once prompted a multi-tab cut that wasn't
+		// needed.)
 		this.app.post('/emulate', anyTab, async (req, res) => {
 			try {
 				const resolved = this.resolveTab(req);
@@ -346,160 +355,6 @@ export class BridgeServer {
 					await resolved.tab.send('Emulation.setUserAgentOverride', { userAgent });
 				}
 				res.json({ ok: true, data: { width, height, deviceScaleFactor: dpr, mobile: isMobile, userAgent: userAgent ?? null, path } });
-			} catch (err) {
-				res.json({ ok: false, error: String(err) });
-			}
-		});
-
-		// Scroll-and-capture one viewport-height slice. Returns metadata
-		// always, image only when `slice` is provided. Designed for AI
-		// consumers of tall pages: Chromium's single-PNG axis cap
-		// (~16384 px) makes `fullPage` capture fail on huge docs, and
-		// compressing a 60k-px-tall image to thumbnail loses the detail
-		// the model needs anyway. The AI-friendlier flow is (1) call
-		// with no slice to learn the page shape, (2) request specific
-		// slices by index. `slice: 0` is the top, `slice: -1` is the
-		// last (Pythonic negative indexing). Out-of-range clamps.
-		// Pair with `browser_emulate` first to anchor the viewport at a
-		// real desktop/mobile size — slicing the editor pane's natural
-		// width gives meaningless results.
-		this.app.get('/screenshot-slice', anyTab, async (req, res) => {
-			try {
-				const resolved = this.resolveTab(req);
-				if (!resolved.tab) { res.json({ ok: false, error: resolved.error }); return; }
-				const dims = await resolved.tab.send('Runtime.evaluate', {
-					expression: '({scrollHeight: document.documentElement.scrollHeight, viewportHeight: window.innerHeight})',
-					returnByValue: true,
-				}) as { result: { value: { scrollHeight: number; viewportHeight: number } } };
-				const { scrollHeight, viewportHeight } = dims.result.value;
-				const totalSlices = Math.max(1, Math.ceil(scrollHeight / viewportHeight));
-
-				const sliceParam = req.query.slice;
-				if (sliceParam === undefined || sliceParam === '') {
-					res.json({ ok: true, data: { totalSlices, scrollHeight, viewportHeight, slice: null } });
-					return;
-				}
-				const rawSlice = Number(sliceParam);
-				if (!Number.isFinite(rawSlice)) {
-					res.json({ ok: false, error: 'slice must be an integer (negative counts from end)' });
-					return;
-				}
-				let slice = Math.trunc(rawSlice);
-				if (slice < 0) slice = totalSlices + slice;
-				slice = Math.max(0, Math.min(totalSlices - 1, slice));
-
-				const prev = await resolved.tab.send('Runtime.evaluate', {
-					expression: '({x: window.scrollX, y: window.scrollY})',
-					returnByValue: true,
-				}) as { result: { value: { x: number; y: number } } };
-				const { x: prevX, y: prevY } = prev.result.value;
-
-				const targetY = slice * viewportHeight;
-				try {
-					await resolved.tab.send('Runtime.evaluate', {
-						expression: `window.scrollTo(0, ${targetY}); new Promise(r => setTimeout(r, 200))`,
-						returnByValue: true,
-						awaitPromise: true,
-					});
-					const shot = await resolved.tab.send('Page.captureScreenshot', { format: 'png' }) as { data: string };
-					res.json({ ok: true, data: { totalSlices, scrollHeight, viewportHeight, slice, image: shot.data } });
-				} finally {
-					await resolved.tab.send('Runtime.evaluate', {
-						expression: `window.scrollTo(${prevX}, ${prevY})`,
-						returnByValue: true,
-					}).catch(() => {});
-				}
-			} catch (err) {
-				res.json({ ok: false, error: String(err) });
-			}
-		});
-
-		// Markdown extraction. Pure-JS DOM walker injected into the page;
-		// no Readability/Turndown, no deps. Maps headings → `#`, links →
-		// `[text](url)`, code/pre → backtick markup, lists → `-` / `1.`,
-		// blockquotes → `>`. Skips script/style/svg/iframe/button.
-		//
-		// Two non-obvious refinements over a naive walker, both forced by
-		// real-world docs sites (Apple Developer in particular):
-		//
-		//  1. *Link-text trim.* Apple's HTML often contains `<a> View </a>`
-		//     with whitespace inside the anchor. A naive walker emits
-		//     `[ View ](...)`, which renders with literal brackets-with-
-		//     spaces in most markdown viewers. Trimming the inner text
-		//     before bracketing produces clean `[View](...)`.
-		//
-		//  2. *Inline-sibling separator.* When a parent contains adjacent
-		//     inline elements with no whitespace between them in the
-		//     source — Apple's platform availability is the canonical
-		//     case: `<span>iOS 13.0+</span><span>iPadOS 13.0+</span>` —
-		//     concatenating their text gives the run-on "iOS 13.0+iPadOS
-		//     13.0+". When walking children, if two adjacent kids are
-		//     both inline elements and the join would mash non-whitespace
-		//     against non-whitespace, insert a single space. A boundary
-		//     character on either side (punctuation, whitespace) opts out
-		//     so we don't break `<strong>word</strong>.`.
-		this.app.get('/markdown', anyTab, async (req, res) => {
-			try {
-				const resolved = this.resolveTab(req);
-				if (!resolved.tab) { res.json({ ok: false, error: resolved.error }); return; }
-				const selector = (req.query.selector as string | undefined) || 'main';
-				const expression = `(() => {
-					const root = document.querySelector(${JSON.stringify(selector)}) || document.body;
-					const SKIP = new Set(['script','style','noscript','svg','iframe','button']);
-					const INLINE = new Set(['span','a','strong','b','em','i','code','small','sub','sup','mark']);
-					function walk(n) {
-						if (n.nodeType === 3) return n.textContent.replace(/\\s+/g, ' ');
-						if (n.nodeType !== 1) return '';
-						const tag = n.tagName.toLowerCase();
-						if (SKIP.has(tag)) return '';
-						let kids = '';
-						let prev = null;
-						for (const c of n.childNodes) {
-							const p = walk(c);
-							if (!p) continue;
-							if (kids && prev && prev.nodeType === 1 && INLINE.has(prev.tagName.toLowerCase())
-									&& c.nodeType === 1 && INLINE.has(c.tagName.toLowerCase())) {
-								const lc = kids[kids.length - 1], fc = p[0];
-								if (/\\S/.test(lc) && /\\S/.test(fc)) kids += ' ';
-							}
-							kids += p;
-							prev = c;
-						}
-						switch (tag) {
-							case 'h1': return '\\n\\n# ' + kids.trim() + '\\n\\n';
-							case 'h2': return '\\n\\n## ' + kids.trim() + '\\n\\n';
-							case 'h3': return '\\n\\n### ' + kids.trim() + '\\n\\n';
-							case 'h4': return '\\n\\n#### ' + kids.trim() + '\\n\\n';
-							case 'h5': return '\\n\\n##### ' + kids.trim() + '\\n\\n';
-							case 'h6': return '\\n\\n###### ' + kids.trim() + '\\n\\n';
-							case 'p': return '\\n\\n' + kids.trim() + '\\n\\n';
-							case 'br': return '\\n';
-							case 'hr': return '\\n\\n---\\n\\n';
-							case 'strong': case 'b': return '**' + kids + '**';
-							case 'em': case 'i': return '*' + kids + '*';
-							case 'code':
-								if (n.parentElement && n.parentElement.tagName === 'PRE') return kids;
-								return '\`' + kids + '\`';
-							case 'pre': return '\\n\\n\`\`\`\\n' + n.textContent.trim() + '\\n\`\`\`\\n\\n';
-							case 'a': { const h = n.getAttribute('href'); const t = kids.trim(); return h ? '[' + t + '](' + h + ')' : t; }
-							case 'img': { const a = n.getAttribute('alt') || ''; const s = n.getAttribute('src') || ''; return s ? '![' + a + '](' + s + ')' : ''; }
-							case 'li': { const ord = n.parentElement && n.parentElement.tagName === 'OL'; return (ord ? '1. ' : '- ') + kids.trim() + '\\n'; }
-							case 'ul': case 'ol': return '\\n' + kids + '\\n';
-							case 'blockquote': return '\\n' + kids.split('\\n').map(l => l ? '> ' + l : '').join('\\n') + '\\n\\n';
-							default: return kids;
-						}
-					}
-					return walk(root).replace(/\\n{3,}/g, '\\n\\n').replace(/[ \\t]+$/gm, '').trim();
-				})()`;
-				const result = await resolved.tab.send('Runtime.evaluate', {
-					expression,
-					returnByValue: true,
-				}) as { result: { value?: string; description?: string }; exceptionDetails?: unknown };
-				if (result.exceptionDetails) {
-					res.json({ ok: false, error: result.result.description ?? 'Markdown extraction failed' });
-					return;
-				}
-				res.json({ ok: true, data: result.result.value ?? '' });
 			} catch (err) {
 				res.json({ ok: false, error: String(err) });
 			}
@@ -556,42 +411,6 @@ export class BridgeServer {
 			const tabId = req.query.tabId as string | undefined;
 			this.cdp.clearNetwork(tabId);
 			res.json({ ok: true, data: { cleared: tabId ?? 'all' } });
-		});
-
-		// Download behavior. Replaces the native save dialog with a configured
-		// directory so an agent can download files headless. Path scoping to
-		// the workspace happens in the MCP layer (browser_download_set);
-		// callers hitting this endpoint directly (curl, scripts) pass an
-		// absolute path and own the consequences.
-		this.app.post('/download/set', anyTab, async (req, res) => {
-			try {
-				const resolved = this.resolveTab(req);
-				if (!resolved.tab) { res.json({ ok: false, error: resolved.error }); return; }
-				const downloadPath = req.body.path as string | undefined;
-				const behavior = (req.body.behavior as string | undefined) ?? 'allow';
-				if (!DOWNLOAD_BEHAVIORS.has(behavior as DownloadBehavior)) {
-					res.json({ ok: false, error: `Invalid behavior "${behavior}". Expected one of: allow, allowAndName, deny, default` });
-					return;
-				}
-				if (behavior === 'allow' || behavior === 'allowAndName') {
-					if (!downloadPath) {
-						res.json({ ok: false, error: 'path is required for behavior allow/allowAndName' });
-						return;
-					}
-					await fs.promises.mkdir(downloadPath, { recursive: true });
-				}
-				await resolved.tab.setDownloadBehavior(downloadPath ?? '', behavior as DownloadBehavior);
-				res.json({ ok: true, data: { path: (behavior === 'allow' || behavior === 'allowAndName') ? downloadPath : null, behavior } });
-			} catch (err) {
-				res.json({ ok: false, error: String(err instanceof Error ? err.message : err) });
-			}
-		});
-
-		this.app.get('/downloads', (req, res) => {
-			const limit = parseInt(req.query.limit as string) || 20;
-			const tabId = req.query.tabId as string | undefined;
-			const entries = tabId ? this.cdp.downloadsForTab(tabId) : this.cdp.downloads;
-			res.json({ ok: true, data: entries.slice(-limit) });
 		});
 
 		// URL

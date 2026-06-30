@@ -9,7 +9,7 @@ import * as os from 'os';
 // package.json as the single source of truth for the version string.
 declare const __PKG_VERSION__: string;
 
-const INSTANCES_DIR = path.join(os.homedir(), '.integrated-browser-mcp', 'instances');
+const INSTANCES_DIR = path.join(os.homedir(), '.integrated-browser-agent-connect', 'instances');
 
 interface Instance {
 	port: number;
@@ -76,7 +76,7 @@ function getBridgeUrl(): string {
 	}
 	// Re-discover on every call. Caching was unsafe: VS Code windows shift
 	// ports on reload (port 3788 may have been pottagold at startup but become
-	// integrated-browser-mcp after a reload), so a cached port can silently
+	// integrated-browser-agent-connect after a reload), so a cached port can silently
 	// route calls to the wrong workspace's bridge. Filesystem-reading the
 	// instances dir each time costs ~1ms, well worth the correctness.
 	const port = discoverPort();
@@ -93,7 +93,7 @@ async function bridgeFetch(urlPath: string, options?: RequestInit): Promise<{ ok
 	} catch {
 		// Each call re-discovers the port, so a second retry doesn't buy us
 		// anything beyond a clearer error message.
-		return { ok: false, error: 'Integrated Browser MCP is not reachable. Make sure VS Code is running with the extension active.' };
+		return { ok: false, error: 'Integrated Browser Agent Connect is not reachable. Make sure VS Code is running with the extension active.' };
 	}
 }
 
@@ -136,7 +136,7 @@ The bridge lazy-launches the browser on the first interaction, so the very first
 `.trim();
 
 const server = new McpServer({
-	name: 'integrated-browser-mcp',
+	name: 'integrated-browser-agent-connect',
 	version: __PKG_VERSION__,
 }, {
 	instructions: SERVER_INSTRUCTIONS,
@@ -249,86 +249,6 @@ server.tool(
 	},
 );
 
-// Screenshot slice
-server.tool(
-	'browser_screenshot_slice',
-	'Capture one viewport-height slice of a long page, plus page metadata. Designed for AI consumers of tall pages where a single full-page PNG either fails (Chromium caps single-image axes at ~16384 px) or compresses to an unreadable thumbnail. Call with no `slice` first to learn the shape (returns `totalSlices`, `scrollHeight`, `viewportHeight`, no image), then request specific slices by index. `slice: 0` is the top (header), `slice: -1` is the last slice (footer); negative indices count from the end. Out-of-range indices clamp. Pair with `browser_emulate` first to anchor the viewport at a real desktop/mobile size — slicing the editor pane\'s natural width gives meaningless results. Scroll position is restored after capture, so the tool is stateless from the page\'s perspective.',
-	{
-		slice: z.number().int().optional().describe('0-indexed slice to capture. Negative counts from the end (-1 = last, -2 = second-to-last). Omit to get metadata only.'),
-		tabId: z.string().optional().describe(tabIdDescription),
-	},
-	async ({ slice, tabId }) => {
-		const params = new URLSearchParams();
-		if (typeof slice === 'number') params.set('slice', String(slice));
-		if (tabId) params.set('tabId', tabId);
-		const qs = params.toString() ? `?${params}` : '';
-		const result = await bridgeFetch(`/screenshot-slice${qs}`);
-		if (!result.ok) {
-			return { content: [{ type: 'text' as const, text: `Error: ${result.error}` }], isError: true };
-		}
-		const data = result.data as { totalSlices: number; scrollHeight: number; viewportHeight: number; slice: number | null; image?: string };
-		const summary = data.slice === null
-			? `Page has ${data.totalSlices} slice(s) — scrollHeight ${data.scrollHeight}px, viewport ${data.viewportHeight}px. Pass slice:0 for the top, slice:-1 for the footer.`
-			: `Slice ${data.slice} of ${data.totalSlices} (y=${data.slice * data.viewportHeight}–${Math.min((data.slice + 1) * data.viewportHeight, data.scrollHeight)}px of ${data.scrollHeight}px total).`;
-		const content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = [
-			{ type: 'text' as const, text: summary },
-		];
-		if (data.image) {
-			content.push({ type: 'image' as const, data: data.image, mimeType: 'image/png' });
-		}
-		return { content };
-	},
-);
-
-// Markdown
-server.tool(
-	'browser_markdown',
-	'Extract page content as markdown. Walks the DOM in-page (~80 lines of pure JS, no Readability/Turndown, no deps). Headings → `#`, links → `[text](url)`, code → backticks, pre → fenced blocks, lists → `-` / `1.`, blockquotes → `>`, images → `![alt](src)`. By default scopes to `<main>` if present, else `<body>`; pass `selector` to scope elsewhere. Useful for letting an agent read a doc page without dumping the entire DOM (browser_dom is much heavier). Lightweight extractor, not Turndown — output may include layout artifacts on heavily designed sites; for those use browser_dom + your own post-processing. Pass `outputPath` to write the markdown to disk and return only `Saved N bytes to <path>` — the path is scoped to the open workspace folder (relative paths resolve against it; absolute paths must live inside it). Useful for bulk archival where the body would otherwise flow through the agent\'s context.',
-	{
-		selector: z.string().optional().describe('CSS selector to scope extraction to (e.g. "article", "#content"). Default: "main" if present, else body.'),
-		outputPath: z.string().optional().describe('Path (absolute or workspace-relative) to write the markdown to. Resolved against the open workspace folder; the resolved path must live inside it. Parent directories are created if missing; existing files are overwritten. When set, the tool returns a short "Saved N bytes to <path>" confirmation instead of the markdown body — keeps the content out of the agent\'s context for archival jobs. Symlinks inside the workspace that escape it are not followed; don\'t enable in workspaces with hostile symlinks.'),
-		tabId: z.string().optional().describe(tabIdDescription),
-	},
-	async ({ selector, outputPath, tabId }) => {
-		const params = new URLSearchParams();
-		if (selector) params.set('selector', selector);
-		if (tabId) params.set('tabId', tabId);
-		const qs = params.toString() ? `?${params}` : '';
-		const result = await bridgeFetch(`/markdown${qs}`);
-		if (!result.ok) {
-			return { content: [{ type: 'text' as const, text: `Error: ${result.error}` }], isError: true };
-		}
-		if (outputPath !== undefined) {
-			// Scope outputPath to the bound workspace folder. Relative paths
-			// resolve against the workspace; absolute paths must live inside
-			// it. Symlinks are not followed — `fs.realpath` per write would
-			// add cost for a low-probability case in a workspace the user
-			// controls; documented above instead.
-			const instance = discoverInstance();
-			if (!instance?.workspace) {
-				return { content: [{ type: 'text' as const, text: `Error: outputPath requires an open workspace folder` }], isError: true };
-			}
-			const workspace = instance.workspace;
-			const resolved = path.isAbsolute(outputPath)
-				? path.resolve(outputPath)
-				: path.resolve(workspace, outputPath);
-			if (resolved !== workspace && !resolved.startsWith(workspace + path.sep)) {
-				return { content: [{ type: 'text' as const, text: `Error: outputPath must be inside the workspace (${workspace}); got ${resolved}` }], isError: true };
-			}
-			const body = typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
-			try {
-				await fs.promises.mkdir(path.dirname(resolved), { recursive: true });
-				await fs.promises.writeFile(resolved, body, 'utf8');
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				return { content: [{ type: 'text' as const, text: `Error: failed to write ${resolved}: ${message}` }], isError: true };
-			}
-			return { content: [{ type: 'text' as const, text: `Saved ${Buffer.byteLength(body, 'utf8')} bytes to ${resolved}` }] };
-		}
-		return toMcpResult(result);
-	},
-);
-
 // Snapshot (accessibility tree)
 server.tool(
 	'browser_snapshot',
@@ -394,51 +314,6 @@ server.tool(
 	},
 );
 
-// Download behavior
-server.tool(
-	'browser_download_set',
-	'Configure where the integrated browser saves downloads, bypassing the native save dialog. Default path is `tmp/downloads` (relative to the open workspace folder); call this before triggering a download (click, navigation to a file URL) so the file lands somewhere predictable. Path is scoped to the workspace: relative paths resolve against it; absolute paths must live inside it. Behavior persists for the life of the browser session — pass `behavior:"default"` to restore the normal save dialog when you\'re done. Pair with `browser_downloads` to see file names and progress. Tip: add `tmp/` to .gitignore.',
-	{
-		path: z.string().optional().describe('Directory to save downloads to. Absolute or workspace-relative; resolved against the open workspace folder; the resolved path must live inside it. Parent directories are created automatically. Default: `tmp/downloads`. Ignored when behavior is `deny` or `default`.'),
-		behavior: z.enum(['allow', 'allowAndName', 'deny', 'default']).optional().describe('CDP setDownloadBehavior. `allow` (default) saves with the server-suggested filename — Chromium adds " (1)" on collision. `allowAndName` saves with the GUID; only useful if you specifically need to handle naming yourself via the events in browser_downloads. `deny` blocks downloads silently. `default` restores the native "ask where to save" dialog.'),
-		tabId: z.string().optional().describe(tabIdDescription),
-	},
-	async ({ path: pathArg, behavior, tabId }) => {
-		const effectiveBehavior = behavior ?? 'allow';
-		let resolvedPath: string | undefined;
-		if (effectiveBehavior === 'allow' || effectiveBehavior === 'allowAndName') {
-			const instance = discoverInstance();
-			if (!instance?.workspace) {
-				return { content: [{ type: 'text' as const, text: `Error: download path requires an open workspace folder` }], isError: true };
-			}
-			const workspace = instance.workspace;
-			const inputPath = pathArg ?? 'tmp/downloads';
-			resolvedPath = path.isAbsolute(inputPath)
-				? path.resolve(inputPath)
-				: path.resolve(workspace, inputPath);
-			if (resolvedPath !== workspace && !resolvedPath.startsWith(workspace + path.sep)) {
-				return { content: [{ type: 'text' as const, text: `Error: download path must be inside the workspace (${workspace}); got ${resolvedPath}` }], isError: true };
-			}
-		}
-		return toMcpResult(await bridgePost('/download/set', { path: resolvedPath, behavior: effectiveBehavior, tabId }));
-	},
-);
-
-// Downloads buffer
-server.tool(
-	'browser_downloads',
-	'Read recent download events (last 50 per tab). Each entry: `{ guid, url, suggestedFilename, state, totalBytes?, receivedBytes?, downloadPath?, startedAt, updatedAt, tabId }`. State is `inProgress`, `completed`, or `canceled`. After completion with behavior:"allow", the file lives at `<downloadPath>/<suggestedFilename>` (Chromium adds " (1)" suffix on collision; not observable from CDP). Events only flow after `browser_download_set` has been called.',
-	{
-		limit: z.number().int().min(1).max(50).default(20).describe('Max entries to return'),
-		tabId: z.string().optional().describe('Filter to one tab. Omit to aggregate across all tabs.'),
-	},
-	async ({ limit, tabId }) => {
-		const params = new URLSearchParams({ limit: String(limit) });
-		if (tabId) params.set('tabId', tabId);
-		return toMcpResult(await bridgeFetch(`/downloads?${params}`));
-	},
-);
-
 // URL
 server.tool(
 	'browser_url',
@@ -464,7 +339,7 @@ server.tool(
 
 server.tool(
 	'browser_tab_open',
-	'Open a new browser tab at the given URL. Returns { tabId, url, title } — the tabId is the handle for subsequent tool calls. Use this when you want to keep the current page while opening another. Requires VS Code launched with --enable-proposed-api=thimo.integrated-browser-mcp.',
+	'Open a new browser tab at the given URL. Returns { tabId, url, title } — the tabId is the handle for subsequent tool calls. Use this when you want to keep the current page while opening another. Requires VS Code launched with --enable-proposed-api=sheriff-stuff.integrated-browser-agent-connect.',
 	{
 		url: z.string().describe('Initial URL for the new tab'),
 		makeActive: z.boolean().optional().default(true).describe('Make this tab the active (default) target for subsequent tool calls'),

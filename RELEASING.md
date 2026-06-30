@@ -1,6 +1,6 @@
 # Releasing
 
-How to cut a release of `integrated-browser-mcp`.
+How to cut a release of `integrated-browser-agent-connect`.
 
 ## Versioning (SemVer)
 
@@ -41,7 +41,7 @@ If the smoke test fails, abort at the prompt. Local state is recoverable:
 ```bash
 git tag -d v0.5.2
 git reset --hard HEAD~1
-trash integrated-browser-mcp-0.5.2.vsix
+trash integrated-browser-agent-connect-0.5.2.vsix
 ```
 
 ### Rolling back after push
@@ -74,23 +74,23 @@ npm run compile
 git add package.json CHANGELOG.md
 git commit -m "Release X.Y.Z"
 git tag vX.Y.Z
-npx vsce package --out integrated-browser-mcp-X.Y.Z.vsix
+npx vsce package --out integrated-browser-agent-connect-X.Y.Z.vsix
 ```
 
 Smoke test:
 
 ```bash
-code --install-extension integrated-browser-mcp-X.Y.Z.vsix --force
+code --install-extension integrated-browser-agent-connect-X.Y.Z.vsix --force
 ```
 
 Restart Claude Code (the MCP child process is captured at session start; reloading VS Code or reinstalling the extension doesn't refresh it). Run through the new features end-to-end.
 
 ```bash
-npm run publish:marketplace -- --packagePath integrated-browser-mcp-X.Y.Z.vsix
+npm run publish:marketplace -- --packagePath integrated-browser-agent-connect-X.Y.Z.vsix
 git push origin main
 git push origin vX.Y.Z
 
-gh release create vX.Y.Z integrated-browser-mcp-X.Y.Z.vsix \
+gh release create vX.Y.Z integrated-browser-agent-connect-X.Y.Z.vsix \
   --title "vX.Y.Z" \
   --notes-file <(awk '/^## \[X\.Y\.Z\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md)
 ```
@@ -99,8 +99,8 @@ The `awk` pulls the just-released CHANGELOG section as the release body. Replace
 
 ## Verify
 
-- Marketplace listing shows the new version: <https://marketplace.visualstudio.com/items?itemName=thimo.integrated-browser-mcp>
-- GitHub release is "Latest": <https://github.com/thimo/integrated-browser-mcp/releases>
+- Marketplace listing shows the new version: <https://marketplace.visualstudio.com/items?itemName=sheriff-stuff.integrated-browser-agent-connect>
+- GitHub release is "Latest": <https://github.com/thimo/integrated-browser-agent-connect/releases>
 - README badges render correctly on the repo home
 
 ## Troubleshooting

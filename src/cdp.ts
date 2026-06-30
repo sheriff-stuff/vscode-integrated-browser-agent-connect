@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
-import { CDPTab, CDPState, ConsoleEntry, NetworkEntry, DownloadEntry } from './cdp-tab';
+import { CDPTab, CDPState, ConsoleEntry, NetworkEntry } from './cdp-tab';
 
-export { CDPState, ConsoleEntry, NetworkEntry, DownloadEntry };
+export { CDPState, ConsoleEntry, NetworkEntry };
 
 export interface TabInfo {
 	tabId: string;
@@ -37,6 +37,10 @@ function numberToPrefix(n: number): string {
  * (`openBrowserTab` + `BrowserTab.startCDPSession`). On the websocket /
  * debug-session fallback path, the manager wraps a single synthetic
  * `tab-main` and refuses multi-tab operations with a clear error.
+ *
+ * Multi-tab is a deferred removal candidate — kept because it has no
+ * functional downside and `browser_emulate` works fine alongside it. See
+ * TODO.md for the scope and the (mistaken) reason a cut was once considered.
  */
 export class CDPManager {
 	private tabs = new Map<string, CDPTab>();
@@ -132,7 +136,7 @@ export class CDPManager {
 
 	/**
 	 * Open a new browser tab via the proposed API. Requires VS Code to be
-	 * launched with `--enable-proposed-api=thimo.integrated-browser-mcp`.
+	 * launched with `--enable-proposed-api=sheriff-stuff.integrated-browser-agent-connect`.
 	 *
 	 * Opens the tab at `about:blank` first and navigates afterward. That order
 	 * matters: the CDP handshake + proxy-level `Target.setAutoAttach` need to
@@ -142,7 +146,7 @@ export class CDPManager {
 	async openTab(url: string, makeActive = true): Promise<CDPTab> {
 		if (typeof vscode.window.openBrowserTab !== 'function') {
 			throw new Error(
-				'Multi-tab requires VS Code to be launched with --enable-proposed-api=thimo.integrated-browser-mcp. See README.',
+				'Multi-tab requires VS Code to be launched with --enable-proposed-api=sheriff-stuff.integrated-browser-agent-connect. See README.',
 			);
 		}
 		const browserTab = await vscode.window.openBrowserTab('about:blank', { preserveFocus: !makeActive });
@@ -314,20 +318,6 @@ export class CDPManager {
 			return;
 		}
 		for (const tab of this.tabs.values()) tab.clearNetwork();
-	}
-
-	get downloads(): DownloadEntry[] {
-		const all: DownloadEntry[] = [];
-		for (const tab of this.tabs.values()) {
-			for (const e of tab.downloads) all.push({ ...e, tabId: tab.tabId });
-		}
-		return all.sort((a, b) => a.startedAt - b.startedAt);
-	}
-
-	downloadsForTab(tabId: string): DownloadEntry[] {
-		const tab = this.tabs.get(tabId);
-		if (!tab) return [];
-		return tab.downloads.map(e => ({ ...e, tabId }));
 	}
 
 	/** Aggregated child sessions across all tabs, stamped with tabId. */

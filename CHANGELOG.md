@@ -1,9 +1,20 @@
 # Changelog
 
-All notable changes to the Integrated Browser MCP extension are documented here.
+All notable changes to the Integrated Browser Agent Connect extension are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## Unreleased
+
+### Changed
+- **Renamed to a private fork.** Extension id is now `sheriff-stuff.integrated-browser-agent-connect` (was `thimo.integrated-browser-mcp`). This shifts the runtime state directory to `~/.integrated-browser-agent-connect/` and the `~/.claude.json` MCP key to `integrated-browser-agent-connect`; the old entry/dir from the upstream extension are left untouched. The internal `browserBridge.*` command and settings namespace is unchanged.
+
+### Removed
+- **Slimmed to the core "load a page, see it, verify the change" workflow.** Removed the download tools (`browser_download_set`, `browser_downloads`, `/download/set`, `/downloads`), markdown extraction (`browser_markdown`, `/markdown`), the long-page slice capture (`browser_screenshot_slice`, `/screenshot-slice`), the "Open in Integrated Browser" editor/explorer context-menu command, and the `browserBridge.browserType` setting (the launch type is now always `editor-browser`). Navigate, eval, click, type, scroll, screenshot, emulate, snapshot, dom, console, network, url, multi-tab, and status are unchanged.
+
+### Added
+- Automated integration test (`@vscode/test-electron`) that launches the extension in a real VS Code instance and verifies activation, `/status`, `/navigate`, `/eval`, `/screenshot`, and that the removed endpoints return 404. Run with `npm test`.
 
 ## [0.5.3] — 2026-05-20
 
@@ -49,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] — 2026-04-24
 
 ### Added
-- **Multi-tab support** (proposed-API path only — requires `--enable-proposed-api=thimo.integrated-browser-mcp`).
+- **Multi-tab support** (proposed-API path only — requires `--enable-proposed-api=sheriff-stuff.integrated-browser-agent-connect`).
   - New MCP tools: `browser_tab_open`, `browser_tab_close`, `browser_tab_list`, `browser_tab_activate`.
   - All existing interaction tools (`browser_navigate`, `browser_eval`, `browser_click`, `browser_type`, `browser_scroll`, `browser_screenshot`, `browser_snapshot`, `browser_dom`, `browser_url`, `browser_console`, `browser_network`, `browser_network_clear`) now accept an optional `tabId` parameter. Omit to target the active tab.
   - `browser_console` and `browser_network` aggregate across all tabs by default. Each entry carries its originating `tabId`. Pass `tabId` to filter to one tab.
@@ -68,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] — 2026-04-23
 
 ### Added
-- Optional support for VS Code's proposed `browser` API ([microsoft/vscode#300319](https://github.com/microsoft/vscode/issues/300319)). When the extension is launched with `--enable-proposed-api=thimo.integrated-browser-mcp`, the bridge uses `vscode.window.openBrowserTab` + `BrowserTab.startCDPSession` instead of a debug session, bypassing `vscode-js-debug`'s CDP proxy. This makes web worker and service worker events (console + network) flow into `/console` and `/network`, tagged with `target: "worker"` / `"service_worker"`. No debug toolbar or Run & Debug badge in this mode.
+- Optional support for VS Code's proposed `browser` API ([microsoft/vscode#300319](https://github.com/microsoft/vscode/issues/300319)). When the extension is launched with `--enable-proposed-api=sheriff-stuff.integrated-browser-agent-connect`, the bridge uses `vscode.window.openBrowserTab` + `BrowserTab.startCDPSession` instead of a debug session, bypassing `vscode-js-debug`'s CDP proxy. This makes web worker and service worker events (console + network) flow into `/console` and `/network`, tagged with `target: "worker"` / `"service_worker"`. No debug toolbar or Run & Debug badge in this mode.
 - Feature-detects the proposal at startup. Without the flag, the bridge falls back to the existing debug-session path and works exactly like 0.2.0.
 - `/status` exposes `transport`: `"browserTab"` when using the proposed API, `"websocket"` on the fallback path, `null` when idle.
 - Status bar tooltip shows the active transport (`Browser MCP: Connected (proposed)` vs `(debug-session)`).
@@ -104,7 +115,7 @@ Initial public release.
 - Local HTTP API on `127.0.0.1:3788` with endpoints for navigation, JavaScript evaluation, clicking, typing, scrolling, screenshots, accessibility snapshots, DOM access, console buffering, network buffering, tab management, and status.
 - Bundled MCP stdio server exposing the HTTP API as tools (`browser_navigate`, `browser_eval`, `browser_click`, `browser_type`, `browser_scroll`, `browser_screenshot`, `browser_snapshot`, `browser_dom`, `browser_console`, `browser_network`, `browser_url`, `browser_status`).
 - Auto-configuration of the MCP server in `~/.claude.json` on activation so Claude Code picks it up without manual setup.
-- Multi-window support: each VS Code window registers its port under `~/.integrated-browser-mcp/instances/`, and the MCP server routes requests to the window whose workspace best matches Claude Code's working directory. `BROWSER_BRIDGE_PORT` can override the routing.
+- Multi-window support: each VS Code window registers its port under `~/.integrated-browser-agent-connect/instances/`, and the MCP server routes requests to the window whose workspace best matches Claude Code's working directory. `BROWSER_BRIDGE_PORT` can override the routing.
 - Circular buffers (200 entries) for `Runtime.consoleAPICalled` and network events to power `/console` and `/network`.
 - Status bar item showing connection state, with a visible warning background when disconnected.
 - `🔴` prefix on the automated browser tab title so it is easy to tell which tab is driven by the bridge.

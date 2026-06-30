@@ -1,9 +1,9 @@
 {
-  "name": "integrated-browser-mcp",
-  "displayName": "Integrated Browser MCP",
+  "name": "integrated-browser-agent-connect",
+  "displayName": "Integrated Browser Agent Connect",
   "description": "Exposes VS Code's integrated browser to external agents (Claude Code, scripts, curl) via a local HTTP API and MCP server.",
   "version": "0.5.3",
-  "publisher": "thimo",
+  "publisher": "sheriff-stuff",
   "license": "MIT",
   "author": {
     "name": "Thimo Jansen"
@@ -11,12 +11,12 @@
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/thimo/vscode-integrated-browser-mcp.git"
+    "url": "https://github.com/sheriff-stuff/vscode-integrated-browser-agent-connect.git"
   },
   "bugs": {
-    "url": "https://github.com/thimo/vscode-integrated-browser-mcp/issues"
+    "url": "https://github.com/sheriff-stuff/vscode-integrated-browser-agent-connect/issues"
   },
-  "homepage": "https://github.com/thimo/vscode-integrated-browser-mcp#readme",
+  "homepage": "https://github.com/sheriff-stuff/vscode-integrated-browser-agent-connect#readme",
   "keywords": [
     "mcp",
     "browser",
@@ -56,28 +56,8 @@
       {
         "command": "browserBridge.status",
         "title": "Browser Bridge: Show Status"
-      },
-      {
-        "command": "browserBridge.openInBrowser",
-        "title": "Open in Integrated Browser"
       }
     ],
-    "menus": {
-      "explorer/context": [
-        {
-          "command": "browserBridge.openInBrowser",
-          "when": "resourceExtname == .html || resourceExtname == .htm || resourceExtname == .pdf || resourceExtname == .svg",
-          "group": "navigation@30"
-        }
-      ],
-      "editor/title/context": [
-        {
-          "command": "browserBridge.openInBrowser",
-          "when": "resourceExtname == .html || resourceExtname == .htm || resourceExtname == .pdf || resourceExtname == .svg",
-          "group": "1_open@30"
-        }
-      ]
-    },
     "configuration": {
       "title": "Browser Bridge",
       "properties": {
@@ -90,16 +70,6 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically start the bridge when VS Code opens"
-        },
-        "browserBridge.browserType": {
-          "type": "string",
-          "default": "editor-browser",
-          "enum": ["editor-browser", "chrome"],
-          "enumDescriptions": [
-            "VS Code integrated browser (runs inside VS Code)",
-            "External Chrome window (more reliable CDP support)"
-          ],
-          "description": "Which browser type to launch for automation"
         }
       }
     }
