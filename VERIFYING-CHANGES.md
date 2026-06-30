@@ -74,9 +74,12 @@ user experience. Use F5 for development; use a VSIX for final verification.
 Closest to what a user gets. Use this to sign off before publishing or relying on it at work.
 
 ```bash
-npx vsce package --allow-proposed-apis browser   # runs the production build via vscode:prepublish
+npx vsce package                        # runs the production build via vscode:prepublish
 code --install-extension integrated-browser-agent-connect-<ver>.vsix --force
 ```
+
+> On vsce 3.x, `package` needs `--allow-proposed-apis browser` (the extension declares the
+> `browser` proposal). vsce 2.x neither needs nor accepts the flag.
 
 - `--force` matters: without it, installing the **same version number** may be skipped, so
   you'd keep running the old code — a classic "why didn't my change take" trap. `--force`

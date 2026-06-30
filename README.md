@@ -25,11 +25,11 @@ This is a standalone build — it's not on the VS Code Marketplace. Build and in
 
    ```bash
    npm install
-   npx vsce package --allow-proposed-apis browser
+   npx vsce package
    code --install-extension integrated-browser-agent-connect-<version>.vsix --force
    ```
 
-   (`vsce package` runs the production build itself via `vscode:prepublish`. The `--allow-proposed-apis browser` flag is required because the extension declares the `browser` API proposal.)
+   (`vsce package` runs the production build itself via `vscode:prepublish`. On vsce 3.x add `--allow-proposed-apis browser`, since it refuses to package an extension declaring the `browser` proposal without it; vsce 2.x neither needs nor accepts the flag.)
 
    (Or press **F5** in VS Code to run it in an Extension Development Host for development.)
 2. The HTTP server starts automatically on `localhost:3788`
