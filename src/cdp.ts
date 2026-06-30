@@ -154,6 +154,10 @@ export class CDPManager {
 		const tab = await this.adoptBrowserTab(browserTab, makeActive);
 		if (url !== 'about:blank') {
 			await tab.send('Page.navigate', { url });
+			// Page.navigate resolves when navigation starts; wait for the root
+			// frame to commit so the returned tab's `url` reflects the
+			// destination rather than the about:blank it was created at.
+			await tab.waitForNavigation();
 		}
 		return tab;
 	}
