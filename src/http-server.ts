@@ -308,8 +308,7 @@ export class BridgeServer {
 		// browser, NOT a dropped override. So `innerWidth:980` after
 		// `{width:390, mobile:true}` on a bare page is correct. Test the width
 		// override without `mobile`, or on a page that has a viewport meta tag.
-		// (See TODO.md — this misread once prompted a multi-tab cut that wasn't
-		// needed.)
+		// (This misread once prompted a multi-tab cut that wasn't needed.)
 		this.app.post('/emulate', anyTab, async (req, res) => {
 			try {
 				const resolved = this.resolveTab(req);

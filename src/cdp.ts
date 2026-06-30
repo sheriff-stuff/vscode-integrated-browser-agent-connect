@@ -39,8 +39,9 @@ function numberToPrefix(n: number): string {
  * `tab-main` and refuses multi-tab operations with a clear error.
  *
  * Multi-tab is a deferred removal candidate — kept because it has no
- * functional downside and `browser_emulate` works fine alongside it. See
- * TODO.md for the scope and the (mistaken) reason a cut was once considered.
+ * functional downside and `browser_emulate` works fine alongside it. (A cut
+ * was once considered on a misread of the /emulate behaviour in
+ * http-server.ts — that reasoning turned out to be wrong.)
  */
 export class CDPManager {
 	private tabs = new Map<string, CDPTab>();

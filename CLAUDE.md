@@ -65,8 +65,8 @@ await vscode.debug.startDebugging(undefined, {
 ```
 
 3. Call `requestCDPProxy` to get the WebSocket endpoint
-2. Maintain a persistent CDP WebSocket connection (reconnect on drop)
-3. Start the HTTP server and MCP server
+4. Maintain a persistent CDP WebSocket connection (reconnect on drop)
+5. Start the HTTP server and MCP server
 
 ### HTTP API (localhost:3788)
 
@@ -80,6 +80,7 @@ All responses: `{ ok: true, data: ... }` or `{ ok: false, error: "..." }`
 | POST | `/click` | `{ selector }` | Click by CSS selector |
 | POST | `/type` | `{ selector, text }` | Type into element |
 | POST | `/scroll` | `{ deltaX, deltaY, selector? }` | Scroll |
+| POST | `/emulate` | — | Device/viewport emulation |
 | GET  | `/screenshot` | — | Base64 PNG |
 | GET  | `/snapshot` | — | Accessibility tree (for agent navigation) |
 | GET  | `/dom` | — | Full page outer HTML |
@@ -88,7 +89,9 @@ All responses: `{ ok: true, data: ... }` or `{ ok: false, error: "..." }`
 | POST | `/network/clear` | — | Clear network log |
 | GET  | `/url` | — | Current page URL |
 | GET  | `/tabs` | — | List open browser tabs |
-| POST | `/tabs/:id/activate` | — | Switch tab |
+| POST | `/tab/open` | — | Open a new tab |
+| POST | `/tab/close/:tabId` | — | Close a tab |
+| POST | `/tab/activate/:tabId` | — | Switch tab |
 | GET  | `/status` | — | Bridge health |
 
 ### MCP Server
@@ -100,11 +103,12 @@ Follows the pattern from `andrewmkhoury/vscode-claude-code-bridge`:
 - Extension auto-writes MCP config to `~/.claude.json` on activation
 - Uses `@modelcontextprotocol/sdk` for the MCP implementation
 
-MCP tools to expose (map 1:1 to HTTP endpoints):
+MCP tools (map 1:1 to HTTP endpoints):
 
-- `browser_navigate`, `browser_eval`, `browser_click`, `browser_type`
+- `browser_navigate`, `browser_eval`, `browser_click`, `browser_type`, `browser_scroll`, `browser_emulate`
 - `browser_screenshot`, `browser_snapshot`, `browser_dom`
-- `browser_console`, `browser_network`, `browser_url`, `browser_status`
+- `browser_console`, `browser_network`, `browser_network_clear`, `browser_url`, `browser_status`
+- `browser_tab_open`, `browser_tab_close`, `browser_tab_list`, `browser_tab_activate`
 
 ### Event buffering
 
@@ -131,11 +135,13 @@ integrated-browser-agent-connect/
 ├── src/
 │   ├── extension.ts        # Activation, debug session management, wires everything together
 │   ├── cdp.ts              # CDP WebSocket connection, requestCDPProxy, event buffering
+│   ├── cdp-tab.ts          # Per-tab CDP target state and command routing
 │   ├── http-server.ts      # Express HTTP API on localhost:3788
 │   ├── mcp-server.ts       # MCP stdio server (bundled, spawned as child process)
 │   └── status-bar.ts       # Status bar item showing connection state
 ├── package.json
-├── tsconfig.json
+├── tsconfig.json           # Extension host build
+├── tsconfig.mcp.json       # MCP server build (separate target)
 ├── esbuild.js              # Build script
 └── CLAUDE.md               # This file
 ```

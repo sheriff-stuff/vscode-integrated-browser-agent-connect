@@ -74,8 +74,7 @@ user experience. Use F5 for development; use a VSIX for final verification.
 Closest to what a user gets. Use this to sign off before publishing or relying on it at work.
 
 ```bash
-npm run package                         # production build of both bundles
-npx vsce package                        # produces integrated-browser-agent-connect-<ver>.vsix
+npx vsce package --allow-proposed-apis browser   # runs the production build via vscode:prepublish
 code --install-extension integrated-browser-agent-connect-<ver>.vsix --force
 ```
 

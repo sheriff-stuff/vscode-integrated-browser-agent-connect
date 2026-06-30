@@ -386,9 +386,22 @@ async function configureClaude(): Promise<void> {
 
 		const mcpServers = (config.mcpServers ?? {}) as Record<string, unknown>;
 
+		// Drop entries left by earlier extension ids. The id was renamed, but
+		// the old key kept pointing at a server file we no longer sync, so on
+		// upgrade Claude Code would try to spawn a dead/duplicate MCP server.
+		const LEGACY_KEYS = ['integrated-browser-mcp'];
+		let removedLegacy = false;
+		for (const key of LEGACY_KEYS) {
+			if (key in mcpServers) {
+				delete mcpServers[key];
+				removedLegacy = true;
+			}
+		}
+
 		const desired = { command: 'node', args: [STABLE_SERVER] };
 		const existing = mcpServers[MCP_KEY] as { command?: string; args?: string[]; env?: unknown } | undefined;
-		if (existing?.command === desired.command
+		if (!removedLegacy
+			&& existing?.command === desired.command
 			&& existing?.args?.[0] === desired.args[0]
 			&& existing?.args?.length === 1
 			&& !existing.env) {
