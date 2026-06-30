@@ -2,7 +2,7 @@
 
 Exposes VS Code's integrated browser to external agents (Claude Code, scripts, curl) via a local HTTP API and MCP server.
 
-A private fork of [thimo/vscode-integrated-browser-mcp](https://github.com/thimo/vscode-integrated-browser-mcp), slimmed to the core "load a page, see it, and verify changes" workflow.
+A standalone, cut-down build of the open-source [thimo/vscode-integrated-browser-mcp](https://github.com/thimo/vscode-integrated-browser-mcp), slimmed to the core "load a page, see it, and verify changes" workflow.
 
 Every existing browser automation solution targets an external Chrome process. This extension is different: it bridges the browser **already inside VS Code** — with your session cookies, your localhost dev server, your DevTools — to any agent that can speak HTTP or MCP.
 
@@ -21,7 +21,7 @@ The extension uses VS Code's built-in `editor-browser` and the Chrome DevTools P
 
 ## Getting started
 
-This is a private fork — it's not on the VS Code Marketplace. Build and install from source:
+This is a standalone build — it's not on the VS Code Marketplace. Build and install from source:
 
 1. Package and install the extension:
    ```bash

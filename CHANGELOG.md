@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 ### Changed
-- **Renamed to a private fork.** Extension id is now `sheriff-stuff.integrated-browser-agent-connect` (was `thimo.integrated-browser-mcp`). This shifts the runtime state directory to `~/.integrated-browser-agent-connect/` and the `~/.claude.json` MCP key to `integrated-browser-agent-connect`; the old entry/dir from the upstream extension are left untouched. The internal `browserBridge.*` command and settings namespace is unchanged.
+- **Rebranded as a standalone build** (cut down from the open-source `thimo/vscode-integrated-browser-mcp`). Extension id is now `sheriff-stuff.integrated-browser-agent-connect` (was `thimo.integrated-browser-mcp`). This shifts the runtime state directory to `~/.integrated-browser-agent-connect/` and the `~/.claude.json` MCP key to `integrated-browser-agent-connect`; the old entry/dir from the original extension are left untouched. The internal `browserBridge.*` command and settings namespace is unchanged.
 
 ### Removed
 - **Slimmed to the core "load a page, see it, verify the change" workflow.** Removed the download tools (`browser_download_set`, `browser_downloads`, `/download/set`, `/downloads`), markdown extraction (`browser_markdown`, `/markdown`), the long-page slice capture (`browser_screenshot_slice`, `/screenshot-slice`), the "Open in Integrated Browser" editor/explorer context-menu command, and the `browserBridge.browserType` setting (the launch type is now always `editor-browser`). Navigate, eval, click, type, scroll, screenshot, emulate, snapshot, dom, console, network, url, multi-tab, and status are unchanged.
