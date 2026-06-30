@@ -1,4 +1,4 @@
-# integrated-browser-mcp
+# integrated-browser-agent-connect
 
 A VS Code extension that exposes VS Code's **integrated browser** to external agents (Claude Code, scripts, curl) via a local HTTP API and MCP server. This gives Claude Code the same browser automation capabilities that GitHub Copilot has natively — but agent-agnostic.
 
@@ -35,20 +35,26 @@ VS Code Integrated Browser
 ## Key technical facts
 
 ### Entry point into the integrated browser
+
 `vscode-js-debug` exposes a CDP proxy via a custom DAP request:
+
 ```typescript
 const session = vscode.debug.activeDebugSession; // type === 'editor-browser'
 const { host, port } = await session.customRequest('requestCDPProxy');
 // ws://host:port → full Chrome DevTools Protocol access
 ```
+
 The `editor-browser` debug type became first-class in VS Code 1.112 (vscode-js-debug PR #2329). It gives raw WebSocket CDP — navigate, eval, screenshot, click, DOM, network interception, everything.
 
 On VS Code 1.118+ (vscode PR #311049), the CDP proxy multiplexes sessions for iframes / web workers / service workers via `Target.setAutoAttach({ flatten: true })`. Messages carry a top-level `sessionId` field; our `CDPConnection.send()` accepts an optional `sessionId` to route commands to specific targets.
 
 ### Auto-attach flow
+
 The extension must:
+
 1. On activation, check for an existing `editor-browser` debug session
 2. If none exists, programmatically launch one:
+
 ```typescript
 await vscode.debug.startDebugging(undefined, {
   type: 'editor-browser',
@@ -57,11 +63,13 @@ await vscode.debug.startDebugging(undefined, {
   url: 'about:blank'
 });
 ```
+
 3. Call `requestCDPProxy` to get the WebSocket endpoint
 4. Maintain a persistent CDP WebSocket connection (reconnect on drop)
 5. Start the HTTP server and MCP server
 
 ### HTTP API (localhost:3788)
+
 Follows the same pattern as `jhamama/cdp-bridge` (study that extension).
 All responses: `{ ok: true, data: ... }` or `{ ok: false, error: "..." }`
 
@@ -72,6 +80,7 @@ All responses: `{ ok: true, data: ... }` or `{ ok: false, error: "..." }`
 | POST | `/click` | `{ selector }` | Click by CSS selector |
 | POST | `/type` | `{ selector, text }` | Type into element |
 | POST | `/scroll` | `{ deltaX, deltaY, selector? }` | Scroll |
+| POST | `/emulate` | — | Device/viewport emulation |
 | GET  | `/screenshot` | — | Base64 PNG |
 | GET  | `/snapshot` | — | Accessibility tree (for agent navigation) |
 | GET  | `/dom` | — | Full page outer HTML |
@@ -80,23 +89,31 @@ All responses: `{ ok: true, data: ... }` or `{ ok: false, error: "..." }`
 | POST | `/network/clear` | — | Clear network log |
 | GET  | `/url` | — | Current page URL |
 | GET  | `/tabs` | — | List open browser tabs |
-| POST | `/tabs/:id/activate` | — | Switch tab |
+| POST | `/tab/open` | — | Open a new tab |
+| POST | `/tab/close/:tabId` | — | Close a tab |
+| POST | `/tab/activate/:tabId` | — | Switch tab |
 | GET  | `/status` | — | Bridge health |
 
 ### MCP Server
+
 Wraps the HTTP API as MCP tools so Claude Code can use it natively without curl.
 Follows the pattern from `andrewmkhoury/vscode-claude-code-bridge`:
+
 - MCP server is a Node.js stdio process bundled into the extension
 - Extension auto-writes MCP config to `~/.claude.json` on activation
 - Uses `@modelcontextprotocol/sdk` for the MCP implementation
 
-MCP tools to expose (map 1:1 to HTTP endpoints):
-- `browser_navigate`, `browser_eval`, `browser_click`, `browser_type`
+MCP tools (map 1:1 to HTTP endpoints):
+
+- `browser_navigate`, `browser_eval`, `browser_click`, `browser_type`, `browser_scroll`, `browser_emulate`
 - `browser_screenshot`, `browser_snapshot`, `browser_dom`
-- `browser_console`, `browser_network`, `browser_url`, `browser_status`
+- `browser_console`, `browser_network`, `browser_network_clear`, `browser_url`, `browser_status`
+- `browser_tab_open`, `browser_tab_close`, `browser_tab_list`, `browser_tab_activate`
 
 ### Event buffering
+
 The extension must buffer CDP events from the moment the connection opens:
+
 - `Runtime.consoleAPICalled` → circular buffer (last 200 entries)
 - `Network.requestWillBeSent` + `Network.responseReceived` → circular buffer (last 200 entries)
 
@@ -112,41 +129,49 @@ These feed the `/console` and `/network` endpoints.
 | `microsoft/vscode-js-debug` | Source of truth for the CDP proxy implementation |
 
 ## File structure
+
 ```
-integrated-browser-mcp/
+integrated-browser-agent-connect/
 ├── src/
 │   ├── extension.ts        # Activation, debug session management, wires everything together
 │   ├── cdp.ts              # CDP WebSocket connection, requestCDPProxy, event buffering
+│   ├── cdp-tab.ts          # Per-tab CDP target state and command routing
 │   ├── http-server.ts      # Express HTTP API on localhost:3788
 │   ├── mcp-server.ts       # MCP stdio server (bundled, spawned as child process)
 │   └── status-bar.ts       # Status bar item showing connection state
 ├── package.json
-├── tsconfig.json
+├── tsconfig.json           # Extension host build
+├── tsconfig.mcp.json       # MCP server build (separate target)
 ├── esbuild.js              # Build script
 └── CLAUDE.md               # This file
 ```
 
 ## Extension activation events
+
 ```json
 "activationEvents": ["onStartupFinished"]
 ```
+
 Start immediately when VS Code opens — don't wait for a command.
 
 ## package.json contributions
+
 - Status bar item
 - Commands: `browserBridge.start`, `browserBridge.stop`, `browserBridge.status`
 - Settings: `browserBridge.httpPort` (default 3788), `browserBridge.autoStart` (default true)
 
 ## Security
+
 - HTTP server binds to `127.0.0.1` only — never exposed to network
 - No authentication (same as cdp-bridge — localhost only)
 - Document clearly: `/eval` executes arbitrary JS in whatever page is open
 
 ## Development workflow
+
 - `npm run watch` — esbuild watch mode
 - F5 in VS Code → launches Extension Development Host with the extension active
 - Test with curl against localhost:3788
 
 ## Publishing target
-VS Code Marketplace under publisher `thimo`.
-Extension ID: `thimo.integrated-browser-mcp`
+
+Extension ID: `sheriff-stuff.integrated-browser-agent-connect`

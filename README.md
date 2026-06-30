@@ -1,6 +1,4 @@
-# Integrated Browser MCP
-
-[![Release](https://img.shields.io/github/v/release/thimo/vscode-integrated-browser-mcp?label=release)](https://github.com/thimo/vscode-integrated-browser-mcp/releases) [![VS Code Marketplace](https://img.shields.io/badge/marketplace-install-blue)](https://marketplace.visualstudio.com/items?itemName=thimo.integrated-browser-mcp)
+# Integrated Browser Agent Connect
 
 Exposes VS Code's integrated browser to external agents (Claude Code, scripts, curl) via a local HTTP API and MCP server.
 
@@ -21,10 +19,19 @@ The extension uses VS Code's built-in `editor-browser` and the Chrome DevTools P
 
 ## Getting started
 
-1. Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=thimo.integrated-browser-mcp), or run:
+This is a standalone build — it's not on the VS Code Marketplace. Build and install from source:
+
+1. Package and install the extension:
+
    ```bash
-   code --install-extension thimo.integrated-browser-mcp
+   npm install
+   npx vsce package --allow-proposed-apis browser
+   code --install-extension integrated-browser-agent-connect-<version>.vsix --force
    ```
+
+   (`vsce package` runs the production build itself via `vscode:prepublish`. The `--allow-proposed-apis browser` flag is required because the extension declares the `browser` API proposal.)
+
+   (Or press **F5** in VS Code to run it in an Extension Development Host for development.)
 2. The HTTP server starts automatically on `localhost:3788`
 3. For Claude Code: the MCP server is auto-configured in `~/.claude.json` on first activation
 4. The browser launches lazily on the first request — no browser tab until you need one
@@ -40,13 +47,13 @@ use browser_navigate to open http://localhost:3000
 Or reference the MCP server:
 
 ```
-use the integrated-browser-mcp to open my app
+use the integrated-browser-agent-connect to open my app
 ```
 
 The MCP server ships an `instructions` field that conformant clients surface to the model automatically. If your agent still picks the wrong tool (e.g. shells out to `open` instead of using `browser_navigate`), add a short hint to your project's `CLAUDE.md`:
 
 ```
-For browser automation, use the integrated-browser-mcp MCP tools (browser_navigate, browser_screenshot, etc.) — never shell out to `open`/`xdg-open`/`start`.
+For browser automation, use the integrated-browser-agent-connect MCP tools (browser_navigate, browser_screenshot, etc.) — never shell out to `open`/`xdg-open`/`start`.
 ```
 
 ### Usage with curl
@@ -71,16 +78,12 @@ All interaction tools accept an optional `tabId` parameter. Omit it to target th
 | `browser_type` | Type text into an element by CSS selector |
 | `browser_scroll` | Scroll the page or a specific element |
 | `browser_screenshot` | Capture page as PNG. `fullPage` for whole-document capture; `waitMs` to delay capture for in-flight CSS transitions. |
-| `browser_screenshot_slice` | Capture one viewport-height slice of a long page. For pages exceeding Chromium's single-PNG axis cap (~16k px). Pair with `browser_emulate` first. |
 | `browser_emulate` | Override viewport dimensions, DPR, mobile flag, and User-Agent. Sticky until `reset:true`. |
 | `browser_snapshot` | Get the accessibility tree |
 | `browser_dom` | Get the full page HTML |
-| `browser_markdown` | Extract page content as markdown (lightweight DOM walker, not Turndown). Pass `outputPath` to write to disk instead of returning the body — workspace-scoped. |
 | `browser_console` | Read buffered console output (aggregates across tabs when `tabId` omitted) |
 | `browser_network` | Read buffered network requests (aggregates across tabs when `tabId` omitted) |
 | `browser_network_clear` | Clear the network log |
-| `browser_download_set` | Configure where downloads land (default `tmp/downloads`, workspace-scoped) and bypass the native save dialog. See [Headless downloads](#headless-downloads). |
-| `browser_downloads` | Read buffered download events (last 50 per tab, aggregates when `tabId` omitted) |
 | `browser_url` | Get the current page URL |
 | `browser_tab_open` | Open a new browser tab (proposed API only) |
 | `browser_tab_close` | Close a tab by id |
@@ -103,16 +106,12 @@ All interaction endpoints (navigate, eval, click, type, scroll, screenshot, snap
 | POST | `/type` | `{ selector, text, tabId? }` | Type into element |
 | POST | `/scroll` | `{ deltaX, deltaY, selector?, tabId? }` | Scroll page or element |
 | GET | `/screenshot` | `?tabId=X&fullPage=true&waitMs=N` | Base64 PNG screenshot. `fullPage=true` captures beyond the viewport. `waitMs` sleeps before capture (handles CSS transitions). |
-| GET | `/screenshot-slice` | `?slice=N&tabId=X` | Viewport-height slice plus metadata. `slice` is 0-indexed; negative from end. Omit `slice` for metadata only. |
-| GET | `/markdown` | `?selector=S&tabId=X` | Page content as markdown. `selector` defaults to `main` (falls back to `body`). |
 | POST | `/emulate` | `{ width, height, deviceScaleFactor?, mobile?, userAgent?, reset?, tabId? }` | Device-metric override. `{reset:true}` clears. |
 | GET | `/snapshot` | `?tabId=X` | Accessibility tree |
 | GET | `/dom` | `?tabId=X` | Full page outerHTML |
 | GET | `/console` | `?limit=N&tabId=X` | Buffered console output (last 200). Aggregates across tabs when `tabId` omitted. |
 | GET | `/network` | `?limit=N&filter=x&tabId=X` | Buffered network requests (last 200). Aggregates across tabs when `tabId` omitted. |
 | POST | `/network/clear` | `?tabId=X` | Clear network log (one tab or all) |
-| POST | `/download/set` | `{ path?, behavior?, tabId? }` | Configure download handling. `behavior` ∈ `allow` (default) / `allowAndName` / `deny` / `default`. `path` is required for `allow`/`allowAndName` and must be absolute when called directly (the MCP layer scopes workspace-relative paths). |
-| GET | `/downloads` | `?limit=N&tabId=X` | Buffered download events (last 50 per tab). Each entry: `{ guid, url, suggestedFilename, state, totalBytes?, receivedBytes?, downloadPath?, startedAt, updatedAt }`. |
 | GET | `/url` | `?tabId=X` | Current page URL |
 | GET | `/tabs` | — | List open tabs `[{ tabId, url, title, active, state, transport }]` |
 | POST | `/tab/open` | `{ url, makeActive? }` | Open a new tab (proposed API only). Returns `{ tabId, url, title }` |
@@ -127,7 +126,7 @@ Each VS Code window gets its own browser and HTTP server. Ports are assigned aut
 
 When Claude Code calls a browser tool, the MCP server needs to know which VS Code window to talk to. It resolves this automatically:
 
-1. Each VS Code window registers itself at `~/.integrated-browser-mcp/instances/<hash>.json` with its port, workspace path, and PID
+1. Each VS Code window registers itself at `~/.integrated-browser-agent-connect/instances/<hash>.json` with its port, workspace path, and PID
 2. The MCP server reads all instance files and filters out dead processes
 3. It matches `process.cwd()` (Claude Code's working directory) against registered workspace paths — deepest match wins
 4. If no workspace matches, it falls back to the most recently started instance
@@ -147,7 +146,7 @@ BROWSER_BRIDGE_PORT=3789 claude
 If the MCP server connects to the wrong window, check the registered instances:
 
 ```bash
-cat ~/.integrated-browser-mcp/instances/*.json
+cat ~/.integrated-browser-agent-connect/instances/*.json
 ```
 
 Stale instance files from crashed VS Code windows are cleaned up automatically on the next window startup. You can also delete them manually.
@@ -161,7 +160,7 @@ VS Code ships a **proposed API** (`vscode.window.openBrowserTab`) that bypasses 
 To enable it, launch VS Code with the proposed API flag:
 
 ```bash
-code --enable-proposed-api=thimo.integrated-browser-mcp
+code --enable-proposed-api=sheriff-stuff.integrated-browser-agent-connect
 ```
 
 The extension feature-detects the proposal at startup and uses it if available. Without the flag, the bridge falls back to the debug-session path and works exactly like before — so setting the flag is optional and safe.
@@ -175,33 +174,14 @@ Caveat: the `browser` proposal is still [tracked upstream](https://github.com/mi
 Multi-tab support requires the proposed API (previous section). When enabled:
 
 - `browser_tab_open("https://example.com")` opens a new tab, returns its `tabId`.
-- `browser_tab_list()` shows all open tabs — the `active` flag marks which one receives commands by default, and the `number` field (1, 2, 3…) matches the `(N) ` prefix in each tab's title. Numbers are stable per tab with reuse: close tab 3 and the next new tab gets 3, but tab 4 stays tab 4 for its lifetime.
+- `browser_tab_list()` shows all open tabs — the `active` flag marks which one receives commands by default, and the `number` field (1, 2, 3…) matches the `(N)` prefix in each tab's title. Numbers are stable per tab with reuse: close tab 3 and the next new tab gets 3, but tab 4 stays tab 4 for its lifetime.
 - Every interaction tool (`browser_navigate`, `browser_eval`, `browser_click`, etc.) accepts an optional `tabId`. Omit it to target the active tab; pass it to target a specific tab.
 - `browser_console` and `browser_network` aggregate across all tabs by default — each entry carries the `tabId` of the tab it came from. Pass `tabId` to filter.
 - Closing a tab in the VS Code UI is picked up automatically; the bridge untracks it and the `tabId` becomes invalid.
 
-The `(N) ` prefix is auto-applied even to pages without a `<title>` element (about:blank, raw API responses), and it re-applies after navigation. The bridge strips any prefix a prior version of the extension may have left on a pre-existing tab, so you won't see stacked markers after an upgrade.
+The `(N)` prefix is auto-applied even to pages without a `<title>` element (about:blank, raw API responses), and it re-applies after navigation. The bridge strips any prefix a prior version of the extension may have left on a pre-existing tab, so you won't see stacked markers after an upgrade.
 
 On the debug-session fallback path, the bridge always exposes exactly one tab (synthetic id `tab-main`) and `browser_tab_open` returns an error pointing to the proposed API.
-
-## Headless downloads
-
-By default the integrated browser shows a native save dialog when a page initiates a download — fine for a human, fatal for an agent. `browser_download_set` switches the active tab's browser session to a configured directory so the file lands somewhere predictable, no UI blocking. `browser_downloads` exposes the buffered `Browser.downloadWillBegin` / `Browser.downloadProgress` events so the agent knows what filename Chromium picked and when the download is finished.
-
-Typical agent flow:
-
-1. `browser_download_set()` — defaults to `<workspace>/tmp/downloads` with `behavior:"allow"`. Parent dirs are created.
-2. Trigger the download (`browser_click`, `browser_navigate` to a file URL, `browser_eval` of a form submit, …).
-3. Poll `browser_downloads` until the matching entry has `state:"completed"`.
-4. Read the file from `<downloadPath>/<suggestedFilename>`.
-5. Optionally `browser_download_set({ behavior: "default" })` to restore the save dialog when done.
-
-Path scoping mirrors `browser_markdown`'s `outputPath`: relative paths resolve against the open workspace folder; absolute paths must live inside it. There is no VS Code setting — the AI calls the tool when it needs the behavior.
-
-Caveats:
-- Behavior is **per browser session**, not per tab — Chromium's `Browser.setDownloadBehavior` is browser-level. Calling `browser_download_set` on any tab affects all tabs of that browser.
-- With `behavior:"allow"` (default), Chromium silently appends ` (1)`, ` (2)`, … to filenames on collision. CDP doesn't expose the suffix; if the agent cares about exact filenames, clear `tmp/downloads` first or use `behavior:"allowAndName"` (saves under the GUID; rename via the events from `browser_downloads`).
-- Add `tmp/` to `.gitignore` — downloads are throwaway.
 
 ## Limitations and trust model
 

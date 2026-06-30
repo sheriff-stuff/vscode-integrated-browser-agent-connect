@@ -7,8 +7,8 @@ import { CDPManager } from './cdp';
 import { BridgeServer } from './http-server';
 import { StatusBar } from './status-bar';
 
-const MCP_KEY = 'integrated-browser-mcp';
-const STABLE_DIR = path.join(os.homedir(), '.integrated-browser-mcp');
+const MCP_KEY = 'integrated-browser-agent-connect';
+const STABLE_DIR = path.join(os.homedir(), '.integrated-browser-agent-connect');
 const STABLE_SERVER = path.join(STABLE_DIR, 'mcp-server.mjs');
 const INSTANCES_DIR = path.join(STABLE_DIR, 'instances');
 
@@ -23,9 +23,7 @@ let browserLaunching = false;
 
 function isBrowserSession(session: vscode.DebugSession): boolean {
 	return session.type === 'pwa-editor-browser'
-		|| session.type === 'editor-browser'
-		|| session.type === 'pwa-chrome'
-		|| session.type === 'chrome';
+		|| session.type === 'editor-browser';
 }
 
 function getWorkspacePath(): string {
@@ -39,7 +37,7 @@ function instanceId(workspacePath: string): string {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-	log = vscode.window.createOutputChannel('Integrated Browser MCP');
+	log = vscode.window.createOutputChannel('Integrated Browser Agent Connect');
 	statusBar = new StatusBar();
 
 	context.subscriptions.push(
@@ -48,7 +46,6 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('browserBridge.start', () => startBridge(context)),
 		vscode.commands.registerCommand('browserBridge.stop', stopBridge),
 		vscode.commands.registerCommand('browserBridge.status', showStatus),
-		vscode.commands.registerCommand('browserBridge.openInBrowser', (uri?: vscode.Uri) => openInBrowser(uri)),
 		vscode.debug.onDidStartDebugSession(session => {
 			// Auto-connect to externally launched browser child sessions on the
 			// fallback (websocket) path. Skip root sessions (no CDP), skip if
@@ -216,7 +213,7 @@ async function stopBridge(): Promise<void> {
 
 function hasProposedBrowserApi(): boolean {
 	// The `browser` proposed API adds `openBrowserTab` on vscode.window.
-	// Absent unless VS Code was launched with --enable-proposed-api=thimo.integrated-browser-mcp.
+	// Absent unless VS Code was launched with --enable-proposed-api=sheriff-stuff.integrated-browser-agent-connect.
 	return typeof (vscode.window as unknown as { openBrowserTab?: unknown }).openBrowserTab === 'function';
 }
 
@@ -274,13 +271,10 @@ async function launchBrowser(_lazyUrl?: string): Promise<void> {
 		});
 	});
 
-	const config = vscode.workspace.getConfiguration('browserBridge');
-	const browserType = config.get<string>('browserType', 'editor-browser');
-
 	const launched = await vscode.debug.startDebugging(undefined, {
-		type: browserType,
+		type: 'editor-browser',
 		request: 'launch',
-		name: 'Browser MCP',
+		name: 'Integrated Browser Agent Connect',
 		url: initialUrl,
 		internalConsoleOptions: 'neverOpen',
 	}, {
@@ -392,9 +386,22 @@ async function configureClaude(): Promise<void> {
 
 		const mcpServers = (config.mcpServers ?? {}) as Record<string, unknown>;
 
+		// Drop entries left by earlier extension ids. The id was renamed, but
+		// the old key kept pointing at a server file we no longer sync, so on
+		// upgrade Claude Code would try to spawn a dead/duplicate MCP server.
+		const LEGACY_KEYS = ['integrated-browser-mcp'];
+		let removedLegacy = false;
+		for (const key of LEGACY_KEYS) {
+			if (key in mcpServers) {
+				delete mcpServers[key];
+				removedLegacy = true;
+			}
+		}
+
 		const desired = { command: 'node', args: [STABLE_SERVER] };
 		const existing = mcpServers[MCP_KEY] as { command?: string; args?: string[]; env?: unknown } | undefined;
-		if (existing?.command === desired.command
+		if (!removedLegacy
+			&& existing?.command === desired.command
 			&& existing?.args?.[0] === desired.args[0]
 			&& existing?.args?.length === 1
 			&& !existing.env) {
@@ -418,44 +425,6 @@ async function configureClaude(): Promise<void> {
 		log.appendLine(`[MCP] Configured Claude MCP in ${claudeSettingsPath}`);
 	} catch (err) {
 		log.appendLine(`[MCP] Failed to configure Claude: ${err}`);
-	}
-}
-
-/**
- * Explorer/editor context menu command: open the clicked resource in the
- * integrated browser. Uses the proposed-API `openTab` path when available
- * (keeps any existing tab open) and falls back to navigating the active
- * tab on the debug-session path.
- */
-async function openInBrowser(uri?: vscode.Uri): Promise<void> {
-	if (!uri) {
-		const active = vscode.window.activeTextEditor?.document.uri;
-		if (!active) {
-			vscode.window.showErrorMessage('Open in Integrated Browser: no file selected.');
-			return;
-		}
-		uri = active;
-	}
-	const url = uri.toString();
-	if (!cdp) {
-		vscode.window.showErrorMessage('Browser Bridge is not active in this window. Run "Browser Bridge: Start" from the Command Palette.');
-		return;
-	}
-	try {
-		if (hasProposedBrowserApi()) {
-			await cdp.openTab(url, true);
-			return;
-		}
-		// Fallback path: lazy-launch if needed, then navigate active tab.
-		await ensureBrowser(url);
-		const tab = cdp.getTab();
-		if (!tab) {
-			vscode.window.showErrorMessage('No active browser tab to navigate.');
-			return;
-		}
-		await tab.send('Page.navigate', { url });
-	} catch (err) {
-		vscode.window.showErrorMessage(`Open in Integrated Browser failed: ${err instanceof Error ? err.message : err}`);
 	}
 }
 
