@@ -274,7 +274,7 @@ async function launchBrowser(_lazyUrl?: string): Promise<void> {
 	const launched = await vscode.debug.startDebugging(undefined, {
 		type: 'editor-browser',
 		request: 'launch',
-		name: 'Browser MCP',
+		name: 'Integrated Browser Agent Connect',
 		url: initialUrl,
 		internalConsoleOptions: 'neverOpen',
 	}, {

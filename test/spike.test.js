@@ -166,10 +166,10 @@ describe('integrated-browser-agent-connect spike', function () {
 		const em = await post(port, '/emulate', { width: 390, height: 844 });
 		await sleep(150);
 		const after = await post(port, '/eval', { expression: 'window.innerWidth' });
-		const path = em.data && em.data.path;
-		log(`emulate innerWidth before=${before.data} after=${after.data} path=${path}`);
+		const emulatePath = em.data && em.data.path;
+		log(`emulate innerWidth before=${before.data} after=${after.data} path=${emulatePath}`);
 		await post(port, '/emulate', { reset: true });
-		assert.strictEqual(after.data, 390, `emulate width not applied (got ${after.data}, path=${path})`);
+		assert.strictEqual(after.data, 390, `emulate width not applied (got ${after.data}, path=${emulatePath})`);
 	});
 
 	it('removed endpoints are gone (404)', async () => {
