@@ -79,7 +79,14 @@
     "package": "npm run check-types && node esbuild.js --production",
     "check-types": "tsc --noEmit && tsc --noEmit -p tsconfig.mcp.json",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test:unit": "node --experimental-strip-types --test \"test/unit/**/*.test.ts\"",
+    "test:integration": "node --experimental-strip-types --test \"test/integration/**/*.test.ts\"",
+    "test:contract": "node --experimental-strip-types --test \"test/contract/**/*.test.ts\"",
+    "test:smoke": "node --experimental-strip-types --test \"test/smoke/**/*.test.ts\"",
+    "test:mcp": "node --experimental-strip-types --test \"test/mcp/**/*.test.ts\"",
+    "pretest": "npm run compile",
+    "test": "node --experimental-strip-types --test \"test/unit/**/*.test.ts\" \"test/integration/**/*.test.ts\" \"test/contract/**/*.test.ts\" \"test/smoke/**/*.test.ts\" \"test/mcp/**/*.test.ts\"",
+    "smoke:live": "node --experimental-strip-types scripts/live-smoke.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

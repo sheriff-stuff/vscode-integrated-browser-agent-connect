@@ -107,9 +107,18 @@ export class CDPTab {
 		return this._browserTab;
 	}
 
-	/** Tab's current URL (from the BrowserTab proposal when available, else last known from navigation). */
+	/**
+	 * Tab's current URL. Prefers the URL learned from our own CDP stream
+	 * (`Page.frameNavigated` / page-session bootstrap) over `BrowserTab.url`:
+	 * the proposed API's `url` lags right after `openBrowserTab` +
+	 * `Page.navigate` — it keeps reporting `about:blank` until VS Code catches
+	 * up, which made `/tab/open` return the wrong URL. `_lastKnownUrl` is set
+	 * from our event stream as soon as the frame commits, so it reflects the
+	 * destination immediately. Both converge for committed navigations, so
+	 * preferring the CDP value never makes us more stale than `BrowserTab.url`.
+	 */
 	get url(): string {
-		return this._browserTab?.url ?? this._lastKnownUrl ?? '';
+		return this._lastKnownUrl || this._browserTab?.url || '';
 	}
 
 	/** Tab's current title (BrowserTab proposal only). */
@@ -119,6 +128,22 @@ export class CDPTab {
 
 	private _lastKnownUrl = '';
 	private _lastKnownTitle = '';
+
+	/**
+	 * Resolve once the root frame has navigated away from about:blank, or after
+	 * `timeoutMs`. `openTab` creates the tab at about:blank then issues a
+	 * `Page.navigate`, which resolves when navigation *starts* — before
+	 * `Page.frameNavigated` updates `_lastKnownUrl`. Awaiting this lets `openTab`
+	 * return a tab whose `url` already reflects the destination. Best-effort:
+	 * on timeout it resolves anyway rather than blocking the caller.
+	 */
+	async waitForNavigation(timeoutMs = 3000): Promise<void> {
+		const settled = () => this._lastKnownUrl !== '' && this._lastKnownUrl !== 'about:blank';
+		const start = Date.now();
+		while (!settled() && Date.now() - start < timeoutMs) {
+			await new Promise(resolve => setTimeout(resolve, 50));
+		}
+	}
 
 	/** Diagnostic: the CDP sessionId for the primary page target (or null). */
 	get pageSessionId(): string | null {
