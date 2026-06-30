@@ -1,0 +1,22 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      # `npm test` runs `pretest` (check-types + esbuild build) first, then the
+      # node:test suites: unit, integration, contract, smoke. The manual
+      # live-smoke (`npm run smoke:live`) needs a running VS Code, so it is not
+      # part of CI.
+      - run: npm test
