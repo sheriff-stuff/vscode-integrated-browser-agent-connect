@@ -2,8 +2,6 @@
 
 Exposes VS Code's integrated browser to external agents (Claude Code, scripts, curl) via a local HTTP API and MCP server.
 
-A standalone, cut-down build of the open-source [thimo/vscode-integrated-browser-mcp](https://github.com/thimo/vscode-integrated-browser-mcp), slimmed to the core "load a page, see it, and verify changes" workflow.
-
 Every existing browser automation solution targets an external Chrome process. This extension is different: it bridges the browser **already inside VS Code** — with your session cookies, your localhost dev server, your DevTools — to any agent that can speak HTTP or MCP.
 
 ## How it works
@@ -24,12 +22,14 @@ The extension uses VS Code's built-in `editor-browser` and the Chrome DevTools P
 This is a standalone build — it's not on the VS Code Marketplace. Build and install from source:
 
 1. Package and install the extension:
+
    ```bash
    npm install
    npm run package
    npx vsce package
    code --install-extension integrated-browser-agent-connect-<version>.vsix --force
    ```
+
    (Or press **F5** in VS Code to run it in an Extension Development Host for development.)
 2. The HTTP server starts automatically on `localhost:3788`
 3. For Claude Code: the MCP server is auto-configured in `~/.claude.json` on first activation
@@ -173,12 +173,12 @@ Caveat: the `browser` proposal is still [tracked upstream](https://github.com/mi
 Multi-tab support requires the proposed API (previous section). When enabled:
 
 - `browser_tab_open("https://example.com")` opens a new tab, returns its `tabId`.
-- `browser_tab_list()` shows all open tabs — the `active` flag marks which one receives commands by default, and the `number` field (1, 2, 3…) matches the `(N) ` prefix in each tab's title. Numbers are stable per tab with reuse: close tab 3 and the next new tab gets 3, but tab 4 stays tab 4 for its lifetime.
+- `browser_tab_list()` shows all open tabs — the `active` flag marks which one receives commands by default, and the `number` field (1, 2, 3…) matches the `(N)` prefix in each tab's title. Numbers are stable per tab with reuse: close tab 3 and the next new tab gets 3, but tab 4 stays tab 4 for its lifetime.
 - Every interaction tool (`browser_navigate`, `browser_eval`, `browser_click`, etc.) accepts an optional `tabId`. Omit it to target the active tab; pass it to target a specific tab.
 - `browser_console` and `browser_network` aggregate across all tabs by default — each entry carries the `tabId` of the tab it came from. Pass `tabId` to filter.
 - Closing a tab in the VS Code UI is picked up automatically; the bridge untracks it and the `tabId` becomes invalid.
 
-The `(N) ` prefix is auto-applied even to pages without a `<title>` element (about:blank, raw API responses), and it re-applies after navigation. The bridge strips any prefix a prior version of the extension may have left on a pre-existing tab, so you won't see stacked markers after an upgrade.
+The `(N)` prefix is auto-applied even to pages without a `<title>` element (about:blank, raw API responses), and it re-applies after navigation. The bridge strips any prefix a prior version of the extension may have left on a pre-existing tab, so you won't see stacked markers after an upgrade.
 
 On the debug-session fallback path, the bridge always exposes exactly one tab (synthetic id `tab-main`) and `browser_tab_open` returns an error pointing to the proposed API.
 
